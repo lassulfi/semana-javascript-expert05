@@ -1,7 +1,3 @@
-/*
- * For a detailed explanation regarding each configuration property, visit:
- */
-
 export default {
   clearMocks: true,
   restoreMocks: true,
@@ -10,7 +6,7 @@ export default {
   coverageProvider: "v8",
   coverageReporters: [
     "text",
-    "lcov"
+    "lcov",
   ],
   testEnvironment: "node",
   coverageThreshold: {
@@ -22,9 +18,11 @@ export default {
     }
   },
   watchPathIgnorePatterns: [
-    "node_modules"
+    "node_modules",
   ],
-  transformIgnorePatterns: ["node_modules"],
+  transformIgnorePatterns: [
+    "node_modules",
+  ],
   collectCoverageFrom: [
     "src/**/*.js", "!src/**/index.js"
   ]
