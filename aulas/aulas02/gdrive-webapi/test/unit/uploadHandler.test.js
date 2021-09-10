@@ -1,6 +1,8 @@
-import { describe, test, expect, jest } from "@jest/globals";
+import { describe, test, expect, beforeEach, jest } from "@jest/globals";
 import fs from 'fs';
 import { resolve } from "path";
+import { pipeline } from "stream/promises";
+import { logger } from "../../src/logger.js";
 import UploadHandler from "../../src/uploadHandler.js";
 import TestUtil from "../_util/testUtil.js";
 
@@ -9,6 +11,11 @@ describe("#UploadHandler Test Suite", () => {
         to: (id) => ioObj,
         emit: (event, message) => { },
     };
+
+    beforeEach(() => {
+        jest.spyOn(logger, 'info')
+            .mockImplementation();
+    })
 
     describe('#registerEvents', () => {
         test('should call onFile and onFinish functions on Busboy instance', () => {
@@ -80,8 +87,116 @@ describe("#UploadHandler Test Suite", () => {
             const handler = new UploadHandler({
                 io: ioObj,
                 socketId: '01'
-            })
+            });
+
+            jest.spyOn(handler, handler.canExecute.name)
+                .mockReturnValueOnce(true);
+
+            const messages = ['hello'];
+            const source = TestUtil.generateReadableStream(messages);
+            const onWrite = jest.fn();
+            const target = TestUtil.generateWriteableStream(onWrite);
+
+            await pipeline(
+                source,
+                handler.handleFileBytes('filename.txt'),
+                target
+            );
+
+            expect(ioObj.to).toHaveBeenCalledTimes(messages.length);
+            expect(ioObj.emit).toHaveBeenCalledTimes(messages.length);
+
+            // if handleFileBytes is a transform stream, the pipeline
+            // will continue the process, sending the data on and 
+            // calling the target function for every chunk
+            expect(onWrite).toBeCalledTimes(messages.length);
+            expect(onWrite.mock.calls.join()).toEqual(messages.join());
+        });
+
+        test('given messageTimeDelay as 2 seconds it should emit only two messages on 2 seconds period', async () => {
+            jest.spyOn(ioObj, ioObj.emit.name);
+            
+            const day = '2021-07-01 01:01';
+            const twoSecondsPeriod = 2000;
+            
+            // Date.now from this.lastMessageSent in handleBytes
+            const onFirstLastMessageSent = TestUtil.getTimeFromDate(`${day}:00`);
+            
+            // received first 'hello'
+            const onFirstCanExecute = TestUtil.getTimeFromDate(`${day}:02`);
+
+            const onSecondUpdateLastMessageSent = onFirstCanExecute;
+            
+            // received second 'hello'. This interval is smaller then the delay
+            const onSecondCanExecute = TestUtil.getTimeFromDate(`${day}:03`);
+            
+            // received 'world'
+            const onThirdCanExecute = TestUtil.getTimeFromDate(`${day}:04`);
+
+            TestUtil.mockDateNow([
+                onFirstLastMessageSent,
+                onFirstCanExecute,
+                onSecondUpdateLastMessageSent,
+                onSecondCanExecute,
+                onThirdCanExecute,
+            ]);
+            
+            const messages = ['hello', 'hello', 'world'];
+            const filename = 'filename.avi';
+            const expectedMessageSent = 2;
+            
+            const source = TestUtil.generateReadableStream(messages);
+            const handler = new UploadHandler({
+                io: ioObj,
+                socketId: '01',
+                messageTimeDelay: twoSecondsPeriod
+            });
+
+            await pipeline(
+                source,
+                handler.handleFileBytes(filename)
+            )
+            
+            expect(ioObj.emit).toHaveBeenCalledTimes(expectedMessageSent);
+
+            const [firstCallResult, secondCallResult] = ioObj.emit.mock.calls;
+            expect(firstCallResult).toEqual([handler.ON_UPLOAD_EVENT, {processedAlready: 'hello'.length, filename}]);
+            expect(secondCallResult).toEqual([handler.ON_UPLOAD_EVENT, {processedAlready: messages.join("").length, filename}]);
 
         });
+    });
+
+    describe('#canExecute', () => {
+        
+       test('Should return true when time is later then specified delay', () => {
+           const timerDelay = 1000;
+           const uploadHandler = new UploadHandler({
+                io: {},
+                socketId: '',
+                messageTimeDelay: timerDelay
+            });
+
+           const tickNow = TestUtil.getTimeFromDate('2021-07-01 00:00:03');
+           TestUtil.mockDateNow([tickNow]);
+           const lastExecution = TestUtil.getTimeFromDate('2021-07-01 00:00:00');
+
+           const result = uploadHandler.canExecute(lastExecution);
+           expect(result).toBeTruthy();
+       }); 
+       test('Should return false when time is not later then specified delay', () => {
+           const timerDelay = 3000;
+           const uploadHandler = new UploadHandler({
+                io: {},
+                socketId: '',
+                messageTimeDelay: timerDelay
+            });
+
+           const now = TestUtil.getTimeFromDate('2021-07-01 00:00:02');
+           TestUtil.mockDateNow([now]);
+           const lastExecution = TestUtil.getTimeFromDate('2021-07-01 00:00:01');
+
+           const result = uploadHandler.canExecute(lastExecution);
+           expect(result).toBeFalsy();
+       }); 
     });
 });
