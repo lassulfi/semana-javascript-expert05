@@ -50,7 +50,7 @@ export default class AppController {
     }
 
     async onFileChange(files) {
-        // There ois here a known bug: if a  upload starts during a upload process,
+        // There is here a known bug: if a  upload starts during a upload process,
         // the modal will close and it will restart from zero
         this.uploadingFiles.clear();
 
