@@ -1,0 +1,27 @@
+version: '3'
+
+services:
+
+  backend:
+    build: ./gdrive-webapi
+    container_name: gdrive-webapi
+    entrypoint: ./.docker/entrypoint.sh
+    volumes:
+      - ./gdrive-webapi:/home/node/app
+    ports:
+      - 3000:3000
+    extra_hosts:
+      - "host.docker.internal:172.17.0.1"
+  
+  frontend:
+    build: ./gdrive-webapp
+    container_name: gdrive-webapp
+    entrypoint: ./.docker/entrypoint.sh
+    volumes:
+      - ./gdrive-webapp:/home/node/app
+    ports:
+      - 8080:8080
+    depends_on: 
+      - backend
+    extra_hosts:
+      - "host.docker.internal:172.17.0.1"
